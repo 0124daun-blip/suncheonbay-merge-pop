@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>순천만 MERGE POP! (웹버전)</title>
+  <style>
+    body {
+      margin: 0;
+      background: #102027;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+    }
+    #game-container {
+      position: relative;
+    }
+    canvas {
+      background: #cfe9ff;
+      border-radius: 12px;
+      box-shadow: 0 0 24px rgba(0,0,0,0.4);
+    }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+      text-shadow: 0 0 3px #000;
+      line-height: 1.4;
+    }
+    #title {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 20px;
+      font-weight: 700;
+      text-align: right;
+      text-shadow: 0 0 3px #000;
+    }
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 30px;
+      font-weight: 700;
+      text-align: center;
+      text-shadow: 0 0 5px #000;
+      pointer-events: none;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game" width="800" height="900"></canvas>
+    <div id="ui">
+      시간: <span id="time">0</span>초<br />
+      생태 점수: <span id="score">0</span>
+    </div>
+    <div id="title">
+      순천만 MERGE POP!<br />
+      <span style="font-size:14px;">갈대 → 조개 → 농게 → 짱뚱어 → 검머갈 → 흑두루미 → 순천만</span>
+    </div>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    // ====== 기본 설정 ======
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const TIME_LIMIT = 100;       // 100초 지나면 게임 오버
+    const TARGET_LEVEL = 7;       // 7단계 = 순천만
+    const gravity = 0.4;
+    const bounce = 0.4;
+    const frictionX = 0.98;
+    const maxFallSpeed = 20;
+
+    // 통(컨테이너) 설정 (화면 가운데)
+    const containerWidth = W * 0.6;
+    const containerHeight = H * 0.6;
+    const containerX1 = (W - containerWidth) / 2;
+    const containerX2 = containerX1 + containerWidth;
+    const containerYTop = (H - containerHeight) / 2;
+    const containerYBottom = containerYTop + containerHeight;
+
+    const spawnLine = containerYTop + 50; // 스폰 판정 라인
+
+    // 레벨별 크기 (대략)
+    const LEVEL_SIZE = {
+      1: 38,  // 갈대
+      2: 48,  // 조개
+      3: 56,  // 농게
+      4: 64,  // 짱뚱어
+      5: 72,  // 검은머리갈매기
+      6: 80,  // 흑두루미
+      7: 90,  // 순천만
+      8: 80,  // 저어새 (보너스 느낌)
+      9: 80   // 보호구역 (최종 상징)
+    };
+
+    // 합쳐졌을 때 다음 단계
+    const MERGE_MAP = {
+      1: 2,
+      2: 3,
+      3: 4,
+      4: 5,
+      5: 6,
+      6: 7,
+      7: 8,
+      8: 9,
+      9: 9
+    };
+
+    // 레벨 → 생물 이름 (표시용)
+    const ECO_LABELS = {
+      1: "갈대",
+      2: "조개",
+      3: "농게",
+      4: "짱뚱어",
+      5: "검머갈",      // 검은머리갈매기
+      6: "흑두루미",
+      7: "순천만",
+      8: "저어새",
+      9: "보호구역"
+    };
+
+    // 레벨 → 색깔 (대략 생태계 느낌)
+    const ECO_COLORS = {
+      1: "#7CB342", // 갈대: 초록
+      2: "#FFF3E0", // 조개: 크림색
+      3: "#FF8A65", // 농게: 주황
+      4: "#8D6E63", // 짱뚱어: 갈색
+      5: "#CFD8DC", // 검은머리갈매기: 회색/흰색
+      6: "#E0F7FA", // 흑두루미: 청록/흰
+      7: "#4DB6AC", // 순천만: 청록(습지)
+      8: "#FFF59D", // 저어새: 노랑 느낌
+      9: "#80CBC4"  // 보호구역: 짙은 청록
+    };
+
+    // ====== 상태 변수 ======
+    let fruits = [];
+    let nextFruit = null;
+    let gameRunning = false;
+    let gameOver = false;
+    let startTime = 0;
+    let lastTime = 0;
+    let score = 0;
+
+    const timeEl = document.getElementById("time");
+    const scoreEl = document.getElementById("score");
+    const messageEl = document.getElementById("message");
+
+    function randChoice(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function nowSec() {
+      return performance.now() / 1000;
+    }
+
+    function resetGame() {
+      fruits = [];
+      nextFruit = null;
+      gameRunning = true;
+      gameOver = false;
+      startTime = nowSec();
+      lastTime = startTime;
+      score = 0;
+      scoreEl.textContent = "0";
+      timeEl.textContent = "0";
+      messageEl.textContent = "";
+      spawnNextFruit();
+      requestAnimationFrame(loop);
+    }
+
+    // ====== 생물(과일) 클래스 ======
+    class Fruit {
+      constructor(x, y, level, vx = 0, vy = 0) {
+        this.x = x;
+        this.y = y;
+        this.level = level;
+        this.size = LEVEL_SIZE[level] || 40;
+        this.r = this.size / 2;
+        this.vx = vx;
+        this.vy = vy;
+        this.isFalling = true;
+        this.isMovingAfterMerge = false;
+        this.canMerge = true;
+      }
+
+      update(dt) {
+        if (!this.isFalling && !this.isMovingAfterMerge) {
+          this.vx = 0;
+          this.vy = 0;
+          return;
+        }
+
+        // 수평 마찰
+        this.vx *= frictionX;
+
+        // 중력
+        this.vy += gravity;
+        if (this.vy > maxFallSpeed) this.vy = maxFallSpeed;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        const leftBoundary = containerX1 + 10;
+        const rightBoundary = containerX2 - 10;
+        const bottomBoundary = containerYBottom - 10;
+
+        // 좌우 벽
+        if (this.x - this.r <= leftBoundary) {
+          this.x = leftBoundary + this.r;
+          this.vx *= -0.5;
+          if (Math.abs(this.vx) < 0.1) this.vx = 0;
+        } else if (this.x + this.r >= rightBoundary) {
+          this.x = rightBoundary - this.r;
+          this.vx *= -0.5;
+          if (Math.abs(this.vx) < 0.1) this.vx = 0;
+        }
+
+        // 바닥
+        if (this.y + this.r >= bottomBoundary) {
+          this.y = bottomBoundary - this.r;
+          this.vy *= -bounce;
+          this.vx *= 0.8;
+
+          if (Math.abs(this.vy) < 0.1 && Math.abs(this.vx) < 0.1) {
+            this.vy = 0;
+            this.vx = 0;
+            this.isFalling = false;
+            this.isMovingAfterMerge = false;
+          }
+        }
+      }
+
+      distanceTo(other) {
+        const dx = this.x - other.x;
+        const dy = this.y - other.y;
+        return Math.hypot(dx, dy);
+      }
+
+      isColliding(other) {
+        return this.distanceTo(other) < (this.r + other.r) * 0.98;
+      }
+
+      draw(ctx) {
+        const c = ECO_COLORS[this.level] || "#cccccc";
+        const label = ECO_LABELS[this.level] || this.level.toString();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fillStyle = c;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+
+        // 텍스트 (생물 이름)
+        ctx.fillStyle = "#000000";
+        ctx.font = `${this.r * 0.8}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, this.x, this.y);
+        ctx.restore();
+      }
+    }
+
+    // ====== 스폰 ======
+    function spawnNextFruit() {
+      if (!gameRunning || gameOver) return;
+
+      // 화면 꽉 찼는지 먼저 확인
+      if (checkFailCondition()) {
+        showFail("실패! 갯벌이 너무 복잡해졌어요!");
+        return;
+      }
+
+      // 초기 등장 레벨 풀 (갈대~짱뚱어 중심)
+      const levelsPool = [1,1,1,1, 2,2,2, 3,3, 4,4, 5];
+      const level = randChoice(levelsPool);
+      const size = LEVEL_SIZE[level] || 40;
+      const r = size / 2;
+
+      const x = (containerX1 + containerX2) / 2;
+      const y = containerYTop + 25;
+
+      nextFruit = new Fruit(x, y, level, 0, 0);
+      nextFruit.isFalling = false;
+    }
+
+    // 마우스 이동 → 미리보기 X 좌표 이동
+    canvas.addEventListener("mousemove", (e) => {
+      if (!nextFruit || !gameRunning || gameOver) return;
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+
+      const r = nextFruit.r;
+      const minX = containerX1 + r + 10;
+      const maxX = containerX2 - r - 10;
+      nextFruit.x = Math.min(maxX, Math.max(minX, mouseX));
+    });
+
+    // 클릭 → 생물 떨어뜨리기 / 게임 재시작
+    canvas.addEventListener("click", () => {
+      if (!gameRunning || gameOver) {
+        resetGame();
+        return;
+      }
+      if (!nextFruit) return;
+
+      nextFruit.isFalling = true;
+      nextFruit.isMovingAfterMerge = false;
+      nextFruit.vx = 0;
+      nextFruit.vy = 0;
+      fruits.push(nextFruit);
+      nextFruit = null;
+
+      setTimeout(spawnNextFruit, 500);
+    });
+
+    // ====== 상태 표시 ======
+    function showFail(text) {
+      if (gameOver) return;
+      gameOver = true;
+      gameRunning = false;
+      messageEl.textContent = text + "\n(클릭하면 다시 시작)";
+    }
+
+    function showSuccess() {
+      if (gameOver) return;
+      gameOver = true;
+      gameRunning = false;
+      messageEl.textContent = `성공! 7단계 순천만이 완성되었습니다! 🌿\n(클릭하면 다시 시작)`;
+    }
+
+    function showTimeOver() {
+      if (gameOver) return;
+      gameOver = true;
+      gameRunning = false;
+      messageEl.textContent = `시간 초과! 순천만이 위협받고 있어요 😢\n(클릭하면 다시 시작)`;
+    }
+
+    function checkFailCondition() {
+      // resting 상태 생물이 spawnLine 위로 올라오면 실패
+      for (const f of fruits) {
+        if (f.isFalling || f.isMovingAfterMerge) continue;
+        const topY = f.y - f.r;
+        if (topY < spawnLine) return true;
+      }
+      return false;
+    }
+
+    // ====== 메인 루프 ======
+    function loop() {
+      if (!gameRunning) return;
+
+      const t = nowSec();
+      const elapsed = Math.floor(t - startTime);
+      timeEl.textContent = elapsed.toString();
+
+      if (elapsed >= TIME_LIMIT) {
+        timeEl.textContent = TIME_LIMIT.toString();
+        showTimeOver();
+        return;
+      }
+
+      const dt = t - lastTime;
+      lastTime = t;
+
+      update(dt);
+      draw();
+
+      if (!gameOver) {
+        requestAnimationFrame(loop);
+      }
+    }
+
+    // ====== 물리 & 합치기 ======
+    function update(dt) {
+      // 1. 물리
+      for (const f of fruits) {
+        f.update(dt);
+      }
+
+      // 2. 합치기
+      const toRemove = new Set();
+      const toAdd = [];
+
+      for (let i = 0; i < fruits.length; i++) {
+        for (let j = i + 1; j < fruits.length; j++) {
+          const a = fruits[i];
+          const b = fruits[j];
+
+          if (!a || !b) continue;
+          if (toRemove.has(i) || toRemove.has(j)) continue;
+          if (!a.isColliding(b)) continue;
+
+          // (1) 같은 레벨 & 9 미만 → 합치기
+          if (a.level === b.level && a.level !== 9 && a.canMerge && b.canMerge) {
+            const newLevel = MERGE_MAP[a.level] || a.level;
+            const newX = (a.x + b.x) / 2;
+            const newY = (a.y + b.y) / 2;
+
+            const nf = new Fruit(newX, newY, newLevel, (Math.random() * 6 - 3), -10);
+            nf.isFalling = true;
+            nf.isMovingAfterMerge = true;
+            toAdd.push(nf);
+
+            toRemove.add(i);
+            toRemove.add(j);
+
+            a.canMerge = false;
+            b.canMerge = false;
+            setTimeout(() => {
+              a.canMerge = true;
+              b.canMerge = true;
+            }, 200);
+
+            score += newLevel * 10;
+            scoreEl.textContent = score.toString();
+
+            if (newLevel === TARGET_LEVEL) {
+              showSuccess();
+              return;
+            }
+          }
+        }
+      }
+
+      // 3. 제거 & 추가
+      if (toRemove.size > 0) {
+        const newList = [];
+        for (let i = 0; i < fruits.length; i++) {
+          if (!toRemove.has(i)) {
+            newList.push(fruits[i]);
+          }
+        }
+        fruits = newList;
+      }
+      fruits.push(...toAdd);
+
+      // 4. 겹침 밀어내기 (간단)
+      for (let rep = 0; rep < 3; rep++) {
+        for (let i = 0; i < fruits.length; i++) {
+          for (let j = i + 1; j < fruits.length; j++) {
+            const a = fruits[i];
+            const b = fruits[j];
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            let dist = Math.hypot(dx, dy);
+            const minDist = a.r + b.r;
+            if (dist < minDist && dist > 0) {
+              const overlap = (minDist - dist) * 0.5;
+              const ux = dx / dist;
+              const uy = dy / dist;
+              a.x += ux * overlap;
+              a.y += uy * overlap;
+              b.x -= ux * overlap;
+              b.y -= uy * overlap;
+            }
+          }
+        }
+      }
+
+      // 5. 실패 조건
+      if (checkFailCondition()) {
+        showFail("실패! 갯벌이 너무 복잡해졌어요!");
+      }
+    }
+
+    // ====== 그리기 ======
+    function drawContainer(ctx) {
+      ctx.save();
+      ctx.fillStyle = "#5D4037"; // 갯벌 둑 느낌
+      // 왼쪽 둑
+      ctx.fillRect(containerX1, containerYTop, 10, containerHeight);
+      // 오른쪽 둑
+      ctx.fillRect(containerX2 - 10, containerYTop, 10, containerHeight);
+      // 바닥
+      ctx.fillRect(containerX1, containerYBottom - 10, containerWidth, 10);
+
+      // 스폰 라인 (점선) - "생태계 한계선" 느낌
+      ctx.setLineDash([5,5]);
+      ctx.strokeStyle = "#455A64";
+      ctx.beginPath();
+      ctx.moveTo(containerX1, spawnLine);
+      ctx.lineTo(containerX2, spawnLine);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function draw() {
+      // 배경: 하늘 → 순천만 느낌 그라데이션
+      const grd = ctx.createLinearGradient(0, 0, 0, H);
+      grd.addColorStop(0, "#90CAF9"); // 하늘
+      grd.addColorStop(0.4, "#E3F2FD");
+      grd.addColorStop(1, "#A5D6A7"); // 갈대밭/습지
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, W, H);
+
+      drawContainer(ctx);
+
+      // 생물들
+      for (const f of fruits) {
+        f.draw(ctx);
+      }
+
+      // 위쪽 미리보기
+      if (nextFruit && !gameOver) {
+        nextFruit.draw(ctx);
+      }
+    }
+
+    // ====== 시작 ======
+    resetGame();
+  </script>
+</body>
+</html>
