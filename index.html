@@ -179,50 +179,116 @@
         this.canMerge = true;
       }
 
-      update(dt) {
-        if (!this.isFalling && !this.isMovingAfterMerge) {
-          this.vx = 0;
-          this.vy = 0;
+      function update(dt) {
+  // 1. 물리
+  for (const f of fruits) {
+    f.update(dt);
+  }
+
+  // 2. 합치기
+  const toRemove = new Set();
+  const toAdd = [];
+
+  for (let i = 0; i < fruits.length; i++) {
+    for (let j = i + 1; j < fruits.length; j++) {
+      const a = fruits[i];
+      const b = fruits[j];
+      if (!a || !b) continue;
+      if (toRemove.has(i) || toRemove.has(j)) continue;
+      if (!a.isColliding(b)) continue;
+
+      if (a.level === b.level && a.level !== 9 && a.canMerge && b.canMerge) {
+        const newLevel = MERGE_MAP[a.level] || a.level;
+        const newX = (a.x + b.x) / 2;
+        const newY = (a.y + b.y) / 2;
+
+        const nf = new Fruit(
+          newX,
+          newY,
+          newLevel,
+          (Math.random() * 6 - 3),
+          -10
+        );
+        nf.isFalling = true;
+        nf.isMovingAfterMerge = true;
+        toAdd.push(nf);
+
+        toRemove.add(i);
+        toRemove.add(j);
+
+        a.canMerge = false;
+        b.canMerge = false;
+        setTimeout(() => {
+          a.canMerge = true;
+          b.canMerge = true;
+        }, 200);
+
+        score += newLevel * 10;
+        scoreEl.textContent = score.toString();
+
+        if (newLevel === TARGET_LEVEL) {
+          showSuccess();
           return;
         }
+      }
+    }
+  }
 
-        this.vx *= frictionX;
+  // 제거 & 추가
+  if (toRemove.size > 0) {
+    const newList = [];
+    for (let i = 0; i < fruits.length; i++) {
+      if (!toRemove.has(i)) newList.push(fruits[i]);
+    }
+    fruits = newList;
+  }
+  fruits.push(...toAdd);
 
-        this.vy += gravity;
-        if (this.vy > maxFallSpeed) this.vy = maxFallSpeed;
-
-        this.x += this.vx;
-        this.y += this.vy;
-
-        const leftBoundary = containerX1 + 10;
-        const rightBoundary = containerX2 - 10;
-        const bottomBoundary = containerYBottom - 10;
-
-        // 좌우 벽
-        if (this.x - this.r <= leftBoundary) {
-          this.x = leftBoundary + this.r;
-          this.vx *= -0.5;
-          if (Math.abs(this.vx) < 0.1) this.vx = 0;
-        } else if (this.x + this.r >= rightBoundary) {
-          this.x = rightBoundary - this.r;
-          this.vx *= -0.5;
-          if (Math.abs(this.vx) < 0.1) this.vx = 0;
-        }
-
-        // 바닥
-        if (this.y + this.r >= bottomBoundary) {
-          this.y = bottomBoundary - this.r;
-          this.vy *= -bounce;
-          this.vx *= 0.8;
-
-          if (Math.abs(this.vy) < 0.1 && Math.abs(this.vx) < 0.1) {
-            this.vy = 0;
-            this.vx = 0;
-            this.isFalling = false;
-            this.isMovingAfterMerge = false;
-          }
+  // 3. 겹침 밀어내기
+  for (let rep = 0; rep < 3; rep++) {
+    for (let i = 0; i < fruits.length; i++) {
+      for (let j = i + 1; j < fruits.length; j++) {
+        const a = fruits[i];
+        const b = fruits[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        let dist = Math.hypot(dx, dy);
+        const minDist = a.r + b.r;
+        if (dist < minDist && dist > 0) {
+          const overlap = (minDist - dist) * 0.5;
+          const ux = dx / dist;
+          const uy = dy / dist;
+          a.x += ux * overlap;
+          a.y += uy * overlap;
+          b.x -= ux * overlap;
+          b.y -= uy * overlap;
         }
       }
+    }
+  }
+
+  // 🔹 4. 벽/바닥 안으로 다시 끌어넣기(여기가 새로 추가되는 부분)
+  const leftBoundary = containerX1 + 10;
+  const rightBoundary = containerX2 - 10;
+  const bottomBoundary = containerYBottom - 10;
+
+  for (const f of fruits) {
+    if (f.x - f.r < leftBoundary) {
+      f.x = leftBoundary + f.r;
+    }
+    if (f.x + f.r > rightBoundary) {
+      f.x = rightBoundary - f.r;
+    }
+    if (f.y + f.r > bottomBoundary) {
+      f.y = bottomBoundary - f.r;
+    }
+  }
+
+  // 5. 실패 체크
+  if (checkFailCondition()) {
+    showFail("실패! 갯벌이 너무 복잡해졌어요!");
+  }
+}
 
       distanceTo(other) {
         const dx = this.x - other.x;
