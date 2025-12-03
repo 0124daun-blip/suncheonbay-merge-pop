@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>순천만 MERGE POP! (웹버전)</title>
+  <title>순천만 MERGE POP! (이미지 버전)</title>
   <style>
     body {
       margin: 0;
@@ -62,7 +62,7 @@
     </div>
     <div id="title">
       순천만 MERGE POP!<br />
-      <span style="font-size:14px;">갈대 → 조개 → 농게 → 짱뚱어 → 검머갈 → 흑두루미 → 순천만</span>
+      <span style="font-size:14px;">1 → 2 → 3 → … → 9</span>
     </div>
     <div id="message"></div>
   </div>
@@ -74,37 +74,37 @@
     const W = canvas.width;
     const H = canvas.height;
 
-    const TIME_LIMIT = 100;       // 100초 지나면 게임 오버
-    const TARGET_LEVEL = 7;       // 7단계 = 순천만
+    const TIME_LIMIT = 100;      // 100초 지나면 게임 오버
+    const TARGET_LEVEL = 7;      // 목표 레벨 (7번 이미지가 순천만이라면 7)
+
     const gravity = 0.4;
     const bounce = 0.4;
     const frictionX = 0.98;
     const maxFallSpeed = 20;
 
-    // 통(컨테이너) 설정 (화면 가운데)
+    // 컨테이너 위치/크기
     const containerWidth = W * 0.6;
     const containerHeight = H * 0.6;
     const containerX1 = (W - containerWidth) / 2;
     const containerX2 = containerX1 + containerWidth;
     const containerYTop = (H - containerHeight) / 2;
     const containerYBottom = containerYTop + containerHeight;
+    const spawnLine = containerYTop + 50;
 
-    const spawnLine = containerYTop + 50; // 스폰 판정 라인
-
-    // 레벨별 크기 (대략)
+    // 레벨별 이미지 크기 (px) - 필요하면 직접 수정해서 맞추면 됨
     const LEVEL_SIZE = {
-      1: 38,  // 갈대
-      2: 48,  // 조개
-      3: 56,  // 농게
-      4: 64,  // 짱뚱어
-      5: 72,  // 검은머리갈매기
-      6: 80,  // 흑두루미
-      7: 90,  // 순천만
-      8: 80,  // 저어새 (보너스 느낌)
-      9: 80   // 보호구역 (최종 상징)
+      1: 76,
+      2: 109,
+      3: 142,
+      4: 150,
+      5: 186,
+      6: 210,
+      7: 220,
+      8: 150,
+      9: 150
     };
 
-    // 합쳐졌을 때 다음 단계
+    // 합쳐졌을 때 다음 레벨
     const MERGE_MAP = {
       1: 2,
       2: 3,
@@ -117,31 +117,16 @@
       9: 9
     };
 
-    // 레벨 → 생물 이름 (표시용)
-    const ECO_LABELS = {
-      1: "갈대",
-      2: "조개",
-      3: "농게",
-      4: "짱뚱어",
-      5: "검머갈",      // 검은머리갈매기
-      6: "흑두루미",
-      7: "순천만",
-      8: "저어새",
-      9: "보호구역"
-    };
+    // ====== 이미지 로드 ======
+    const images = {};
+    for (let i = 1; i <= 9; i++) {
+      const img = new Image();
+      img.src = `${i}.png`; // 1.png ~ 9.png
+      images[i] = img;
+    }
 
-    // 레벨 → 색깔 (대략 생태계 느낌)
-    const ECO_COLORS = {
-      1: "#7CB342", // 갈대: 초록
-      2: "#FFF3E0", // 조개: 크림색
-      3: "#FF8A65", // 농게: 주황
-      4: "#8D6E63", // 짱뚱어: 갈색
-      5: "#CFD8DC", // 검은머리갈매기: 회색/흰색
-      6: "#E0F7FA", // 흑두루미: 청록/흰
-      7: "#4DB6AC", // 순천만: 청록(습지)
-      8: "#FFF59D", // 저어새: 노랑 느낌
-      9: "#80CBC4"  // 보호구역: 짙은 청록
-    };
+    const backgroundImg = new Image();
+    backgroundImg.src = "background.png";
 
     // ====== 상태 변수 ======
     let fruits = [];
@@ -179,13 +164,13 @@
       requestAnimationFrame(loop);
     }
 
-    // ====== 생물(과일) 클래스 ======
+    // ====== Fruit 클래스 ======
     class Fruit {
       constructor(x, y, level, vx = 0, vy = 0) {
         this.x = x;
         this.y = y;
         this.level = level;
-        this.size = LEVEL_SIZE[level] || 40;
+        this.size = LEVEL_SIZE[level] || 80; // 사이즈 없으면 기본 80
         this.r = this.size / 2;
         this.vx = vx;
         this.vy = vy;
@@ -201,10 +186,8 @@
           return;
         }
 
-        // 수평 마찰
         this.vx *= frictionX;
 
-        // 중력
         this.vy += gravity;
         if (this.vy > maxFallSpeed) this.vy = maxFallSpeed;
 
@@ -252,25 +235,26 @@
       }
 
       draw(ctx) {
-        const c = ECO_COLORS[this.level] || "#cccccc";
-        const label = ECO_LABELS[this.level] || this.level.toString();
+        const img = images[this.level];
 
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
-        ctx.fillStyle = c;
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "#ffffff";
-        ctx.stroke();
-
-        // 텍스트 (생물 이름)
-        ctx.fillStyle = "#000000";
-        ctx.font = `${this.r * 0.8}px Arial`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, this.x, this.y);
-        ctx.restore();
+        if (img && img.complete) {
+          // 이미지 중심이 (x, y)에 오도록 그림
+          ctx.drawImage(
+            img,
+            this.x - this.r,
+            this.y - this.r,
+            this.size,
+            this.size
+          );
+        } else {
+          // 이미지 로드 전 임시 원
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff88";
+          ctx.fill();
+          ctx.strokeStyle = "#000";
+          ctx.stroke();
+        }
       }
     }
 
@@ -278,17 +262,14 @@
     function spawnNextFruit() {
       if (!gameRunning || gameOver) return;
 
-      // 화면 꽉 찼는지 먼저 확인
       if (checkFailCondition()) {
         showFail("실패! 갯벌이 너무 복잡해졌어요!");
         return;
       }
 
-      // 초기 등장 레벨 풀 (갈대~짱뚱어 중심)
+      // 초반 등장 레벨 풀 (1~5 위주)
       const levelsPool = [1,1,1,1, 2,2,2, 3,3, 4,4, 5];
       const level = randChoice(levelsPool);
-      const size = LEVEL_SIZE[level] || 40;
-      const r = size / 2;
 
       const x = (containerX1 + containerX2) / 2;
       const y = containerYTop + 25;
@@ -297,7 +278,7 @@
       nextFruit.isFalling = false;
     }
 
-    // 마우스 이동 → 미리보기 X 좌표 이동
+    // 마우스 이동으로 X 조정
     canvas.addEventListener("mousemove", (e) => {
       if (!nextFruit || !gameRunning || gameOver) return;
       const rect = canvas.getBoundingClientRect();
@@ -309,7 +290,7 @@
       nextFruit.x = Math.min(maxX, Math.max(minX, mouseX));
     });
 
-    // 클릭 → 생물 떨어뜨리기 / 게임 재시작
+    // 클릭 → 떨어뜨리기 / 재시작
     canvas.addEventListener("click", () => {
       if (!gameRunning || gameOver) {
         resetGame();
@@ -339,7 +320,7 @@
       if (gameOver) return;
       gameOver = true;
       gameRunning = false;
-      messageEl.textContent = `성공! 7단계 순천만이 완성되었습니다! 🌿\n(클릭하면 다시 시작)`;
+      messageEl.textContent = `성공! ${TARGET_LEVEL}단계 이미지가 완성되었습니다! 🎉\n(클릭하면 다시 시작)`;
     }
 
     function showTimeOver() {
@@ -350,7 +331,6 @@
     }
 
     function checkFailCondition() {
-      // resting 상태 생물이 spawnLine 위로 올라오면 실패
       for (const f of fruits) {
         if (f.isFalling || f.isMovingAfterMerge) continue;
         const topY = f.y - f.r;
@@ -384,7 +364,7 @@
       }
     }
 
-    // ====== 물리 & 합치기 ======
+    // ====== 업데이트 ======
     function update(dt) {
       // 1. 물리
       for (const f of fruits) {
@@ -399,18 +379,23 @@
         for (let j = i + 1; j < fruits.length; j++) {
           const a = fruits[i];
           const b = fruits[j];
-
           if (!a || !b) continue;
           if (toRemove.has(i) || toRemove.has(j)) continue;
           if (!a.isColliding(b)) continue;
 
-          // (1) 같은 레벨 & 9 미만 → 합치기
+          // 같은 레벨 & 9 미만
           if (a.level === b.level && a.level !== 9 && a.canMerge && b.canMerge) {
             const newLevel = MERGE_MAP[a.level] || a.level;
             const newX = (a.x + b.x) / 2;
             const newY = (a.y + b.y) / 2;
 
-            const nf = new Fruit(newX, newY, newLevel, (Math.random() * 6 - 3), -10);
+            const nf = new Fruit(
+              newX,
+              newY,
+              newLevel,
+              (Math.random() * 6 - 3),
+              -10
+            );
             nf.isFalling = true;
             nf.isMovingAfterMerge = true;
             toAdd.push(nf);
@@ -436,19 +421,16 @@
         }
       }
 
-      // 3. 제거 & 추가
       if (toRemove.size > 0) {
         const newList = [];
         for (let i = 0; i < fruits.length; i++) {
-          if (!toRemove.has(i)) {
-            newList.push(fruits[i]);
-          }
+          if (!toRemove.has(i)) newList.push(fruits[i]);
         }
         fruits = newList;
       }
       fruits.push(...toAdd);
 
-      // 4. 겹침 밀어내기 (간단)
+      // 3. 겹침 밀어내기
       for (let rep = 0; rep < 3; rep++) {
         for (let i = 0; i < fruits.length; i++) {
           for (let j = i + 1; j < fruits.length; j++) {
@@ -471,7 +453,6 @@
         }
       }
 
-      // 5. 실패 조건
       if (checkFailCondition()) {
         showFail("실패! 갯벌이 너무 복잡해졌어요!");
       }
@@ -480,15 +461,11 @@
     // ====== 그리기 ======
     function drawContainer(ctx) {
       ctx.save();
-      ctx.fillStyle = "#5D4037"; // 갯벌 둑 느낌
-      // 왼쪽 둑
+      ctx.fillStyle = "#5D4037";
       ctx.fillRect(containerX1, containerYTop, 10, containerHeight);
-      // 오른쪽 둑
       ctx.fillRect(containerX2 - 10, containerYTop, 10, containerHeight);
-      // 바닥
       ctx.fillRect(containerX1, containerYBottom - 10, containerWidth, 10);
 
-      // 스폰 라인 (점선) - "생태계 한계선" 느낌
       ctx.setLineDash([5,5]);
       ctx.strokeStyle = "#455A64";
       ctx.beginPath();
@@ -499,22 +476,25 @@
     }
 
     function draw() {
-      // 배경: 하늘 → 순천만 느낌 그라데이션
-      const grd = ctx.createLinearGradient(0, 0, 0, H);
-      grd.addColorStop(0, "#90CAF9"); // 하늘
-      grd.addColorStop(0.4, "#E3F2FD");
-      grd.addColorStop(1, "#A5D6A7"); // 갈대밭/습지
-      ctx.fillStyle = grd;
-      ctx.fillRect(0, 0, W, H);
+      // 배경 이미지가 로드되었으면 배경 이미지 사용
+      if (backgroundImg && backgroundImg.complete) {
+        ctx.drawImage(backgroundImg, 0, 0, W, H);
+      } else {
+        // 로딩 전에는 그라데이션 배경
+        const grd = ctx.createLinearGradient(0, 0, 0, H);
+        grd.addColorStop(0, "#90CAF9");
+        grd.addColorStop(0.4, "#E3F2FD");
+        grd.addColorStop(1, "#A5D6A7");
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, W, H);
+      }
 
       drawContainer(ctx);
 
-      // 생물들
       for (const f of fruits) {
         f.draw(ctx);
       }
 
-      // 위쪽 미리보기
       if (nextFruit && !gameOver) {
         nextFruit.draw(ctx);
       }
