@@ -250,7 +250,7 @@
       }
 
       isColliding(other) {
-        return this.distanceTo(other) < (this.r + other.r) * 0.98;
+        return this.distanceTo(other) <= (this.r + other.r) * 1.02;
       }
 
       draw(ctx) {
