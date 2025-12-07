@@ -51,6 +51,17 @@
       pointer-events: none;
       white-space: pre-line;
     }
+    /* ✅ 7단계 성공 이미지 스타일 */
+    #success-img {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 300px;   /* 필요하면 크기 조절 */
+      height: 300px;
+      display: none;  /* 기본은 숨김 */
+      pointer-events: none; /* 뒤의 캔버스 클릭 막지 않기 */
+    }
   </style>
 </head>
 <body>
@@ -65,6 +76,9 @@
       <span style="font-size:14px;">1 → 2 → 3 → … → 9</span>
     </div>
     <div id="message"></div>
+
+    <!-- ✅ 7단계 성공 이미지 (7.png 사용) -->
+    <img id="success-img" src="7.png" alt="7단계 이미지" />
   </div>
 
   <script>
@@ -121,7 +135,7 @@
     const images = {};
     for (let i = 1; i <= 9; i++) {
       const img = new Image();
-      img.src = `${i}.png`; // 1.png ~ 9.png (소문자!)
+      img.src = `${i}.png`; // 1.png ~ 9.png
       images[i] = img;
     }
 
@@ -140,6 +154,7 @@
     const timeEl = document.getElementById("time");
     const scoreEl = document.getElementById("score");
     const messageEl = document.getElementById("message");
+    const successImg = document.getElementById("success-img"); // ✅ 추가
 
     function randChoice(arr) {
       return arr[Math.floor(Math.random() * arr.length)];
@@ -160,6 +175,10 @@
       scoreEl.textContent = "0";
       timeEl.textContent = "0";
       messageEl.textContent = "";
+
+      // ✅ 재시작할 때 7단계 이미지 숨기기
+      if (successImg) successImg.style.display = "none";
+
       spawnNextFruit();
       requestAnimationFrame(loop);
     }
@@ -323,7 +342,14 @@
       if (gameOver) return;
       gameOver = true;
       gameRunning = false;
-      messageEl.textContent = `성공! ${TARGET_LEVEL}단계 이미지가 완성되었습니다! 🎉\n(클릭하면 다시 시작)`;
+
+      messageEl.textContent =
+        `성공! ${TARGET_LEVEL}단계 이미지가 완성되었습니다! 🎉\n(클릭하면 다시 시작)`;
+
+      // ✅ 7단계 이미지 화면 중앙에 표시
+      if (successImg) {
+        successImg.style.display = "block";
+      }
     }
 
     function showTimeOver() {
@@ -367,7 +393,7 @@
       }
     }
 
-    // ====== 업데이트 (틀 밖으로 못 나가게 클램프 포함) ======
+    // ====== 업데이트 ======
     function update(dt) {
       // 1. 물리
       for (const f of fruits) {
@@ -456,7 +482,7 @@
         }
       }
 
-      // 4. 컨테이너 안으로 강제 클램프
+      // 4. 컨테이너 안으로 클램프
       const leftBoundary = containerX1 + 10;
       const rightBoundary = containerX2 - 10;
       const bottomBoundary = containerYBottom - 10;
