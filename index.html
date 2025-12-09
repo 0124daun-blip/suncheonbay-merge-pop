@@ -51,16 +51,16 @@
       pointer-events: none;
       white-space: pre-line;
     }
-    /* ✅ 7단계 성공 이미지 스타일 */
+    /* 7단계 성공 이미지 (오버레이) */
     #success-img {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 300px;   /* 필요하면 크기 조절 */
+      width: 300px;
       height: 300px;
-      display: none;  /* 기본은 숨김 */
-      pointer-events: none; /* 뒤의 캔버스 클릭 막지 않기 */
+      display: none;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -73,11 +73,11 @@
     </div>
     <div id="title">
       순천만 MERGE POP!<br />
-      <span style="font-size:14px;">1 → 2 → 3 → … → 9</span>
+      <span style="font-size:14px;">1 → 2 → 3 → … → 7</span>
     </div>
     <div id="message"></div>
 
-    <!-- ✅ 7단계 성공 이미지 (7.png 사용) -->
+    <!-- 7단계 성공 오버레이 이미지 (7.png 사용) -->
     <img id="success-img" src="7.png" alt="7단계 이미지" />
   </div>
 
@@ -89,7 +89,7 @@
     const H = canvas.height;
 
     const TIME_LIMIT = 100;      // 100초 지나면 게임 오버
-    const TARGET_LEVEL = 7;      // 목표 레벨
+    const TARGET_LEVEL = 7;      // 목표 레벨 (최종 단계)
 
     const gravity = 0.4;
     const bounce = 0.4;
@@ -105,7 +105,7 @@
     const containerYBottom = containerYTop + containerHeight;
     const spawnLine = containerYTop + 50;
 
-    // 레벨별 이미지 크기
+    // 레벨별 이미지 크기 (1~7: 단계 / 8,9: 특수 이미지)
     const LEVEL_SIZE = {
       1: 76,
       2: 109,
@@ -114,11 +114,11 @@
       5: 186,
       6: 210,
       7: 220,
-      8: 150,
-      9: 150
+      8: 150, // 레벨업 아이템(8번 이미지)
+      9: 150  // 장애물 블록(9번 이미지)
     };
 
-    // 합쳐졌을 때 다음 레벨
+    // 단계 업그레이드용 (1~7까지만 단계)
     const MERGE_MAP = {
       1: 2,
       2: 3,
@@ -126,9 +126,7 @@
       4: 5,
       5: 6,
       6: 7,
-      7: 8,
-      8: 9,
-      9: 9
+      7: 7  // 7단계가 최종
     };
 
     // ====== 이미지 로드 ======
@@ -154,7 +152,7 @@
     const timeEl = document.getElementById("time");
     const scoreEl = document.getElementById("score");
     const messageEl = document.getElementById("message");
-    const successImg = document.getElementById("success-img"); // ✅ 추가
+    const successImg = document.getElementById("success-img");
 
     function randChoice(arr) {
       return arr[Math.floor(Math.random() * arr.length)];
@@ -176,8 +174,10 @@
       timeEl.textContent = "0";
       messageEl.textContent = "";
 
-      // ✅ 재시작할 때 7단계 이미지 숨기기
-      if (successImg) successImg.style.display = "none";
+      // 오버레이 이미지 숨기기
+      if (successImg) {
+        successImg.style.display = "none";
+      }
 
       spawnNextFruit();
       requestAnimationFrame(loop);
@@ -217,7 +217,7 @@
         const rightBoundary = containerX2 - 10;
         const bottomBoundary = containerYBottom - 10;
 
-        // 좌우 벽
+        // 좌우 벽 충돌
         if (this.x - this.r <= leftBoundary) {
           this.x = leftBoundary + this.r;
           this.vx *= -0.5;
@@ -228,7 +228,7 @@
           if (Math.abs(this.vx) < 0.1) this.vx = 0;
         }
 
-        // 바닥
+        // 바닥 충돌
         if (this.y + this.r >= bottomBoundary) {
           this.y = bottomBoundary - this.r;
           this.vy *= -bounce;
@@ -290,7 +290,17 @@
         return;
       }
 
-      const levelsPool = [1,1,1,1, 2,2,2, 3,3, 4,4, 5];
+      // 1~5단계 + 가끔 8,9 등장
+      const levelsPool = [
+        1,1,1,1,
+        2,2,2,
+        3,3,
+        4,4,
+        5,
+        8,  // 레벨업 아이템
+        9   // 장애물 블록
+      ];
+
       const level = randChoice(levelsPool);
 
       const x = (containerX1 + containerX2) / 2;
@@ -346,7 +356,6 @@
       messageEl.textContent =
         `성공! ${TARGET_LEVEL}단계 이미지가 완성되었습니다! 🎉\n(클릭하면 다시 시작)`;
 
-      // ✅ 7단계 이미지 화면 중앙에 표시
       if (successImg) {
         successImg.style.display = "block";
       }
@@ -400,7 +409,7 @@
         f.update(dt);
       }
 
-      // 2. 합치기
+      // 2. 합치기 + 8/9 특수 행동
       const toRemove = new Set();
       const toAdd = [];
 
@@ -412,7 +421,49 @@
           if (toRemove.has(i) || toRemove.has(j)) continue;
           if (!a.isColliding(b)) continue;
 
-          if (a.level === b.level && a.level !== 9 && a.canMerge && b.canMerge) {
+          // 💠 8번 이미지: 레벨 업 아이템
+          if (a.level === 8 && b.level >= 1 && b.level <= 7) {
+            if (b.level < TARGET_LEVEL) {
+              b.level += 1;
+              b.size = LEVEL_SIZE[b.level] || b.size;
+              b.r = b.size / 2;
+              b.vy = -10;
+            }
+            toRemove.add(i);
+
+            if (b.level === TARGET_LEVEL) {
+              showSuccess();
+            }
+            continue;
+          }
+
+          if (b.level === 8 && a.level >= 1 && a.level <= 7) {
+            if (a.level < TARGET_LEVEL) {
+              a.level += 1;
+              a.size = LEVEL_SIZE[a.level] || a.size;
+              a.r = a.size / 2;
+              a.vy = -10;
+            }
+            toRemove.add(j);
+
+            if (a.level === TARGET_LEVEL) {
+              showSuccess();
+            }
+            continue;
+          }
+
+          // 🧱 9번 이미지: 장애물 블록 (레벨 변화 없음)
+          if (a.level === 9 || b.level === 9) {
+            // 물리적 밀어내기는 아래에서 처리하므로 여기선 아무 것도 안 함
+            continue;
+          }
+
+          // 🍊 일반 합치기 (1~6까지만 합성, 7은 최종)
+          if (a.level === b.level &&
+              a.level < TARGET_LEVEL &&
+              a.canMerge &&
+              b.canMerge) {
+
             const newLevel = MERGE_MAP[a.level] || a.level;
             const newX = (a.x + b.x) / 2;
             const newY = (a.y + b.y) / 2;
@@ -443,13 +494,12 @@
 
             if (newLevel === TARGET_LEVEL) {
               showSuccess();
-              return;
             }
           }
         }
       }
 
-      // 제거 & 추가
+      // 제거 & 추가 적용
       if (toRemove.size > 0) {
         const newList = [];
         for (let i = 0; i < fruits.length; i++) {
@@ -459,7 +509,7 @@
       }
       fruits.push(...toAdd);
 
-      // 3. 겹침 밀어내기
+      // 3. 겹침 밀어내기 (물리)
       for (let rep = 0; rep < 3; rep++) {
         for (let i = 0; i < fruits.length; i++) {
           for (let j = i + 1; j < fruits.length; j++) {
