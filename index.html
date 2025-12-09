@@ -149,6 +149,10 @@
     let lastTime = 0;
     let score = 0;
 
+    // 8번/9번 아이템이 이 판에서 이미 나왔는지 여부
+    let usedItem8 = false;
+    let usedItem9 = false;
+
     const timeEl = document.getElementById("time");
     const scoreEl = document.getElementById("score");
     const messageEl = document.getElementById("message");
@@ -173,6 +177,10 @@
       scoreEl.textContent = "0";
       timeEl.textContent = "0";
       messageEl.textContent = "";
+
+      // 8,9 아이템 사용 여부 초기화
+      usedItem8 = false;
+      usedItem9 = false;
 
       // 오버레이 이미지 숨기기
       if (successImg) {
@@ -290,18 +298,24 @@
         return;
       }
 
-      // 1~5단계 + 가끔 8,9 등장
+      // 기본 풀: 1~5단계
       const levelsPool = [
         1,1,1,1,
         2,2,2,
         3,3,
         4,4,
-        5,
-        8,  // 레벨업 아이템
-        9   // 장애물 블록
+        5
       ];
 
+      // 한 판에 한 번만: 아직 안 나온 경우에만 추가
+      if (!usedItem8) levelsPool.push(8); // 레벨업 아이템
+      if (!usedItem9) levelsPool.push(9); // 장애물 블록
+
       const level = randChoice(levelsPool);
+
+      // 뽑힌 게 8 또는 9면 "사용됨" 표시
+      if (level === 8) usedItem8 = true;
+      if (level === 9) usedItem9 = true;
 
       const x = (containerX1 + containerX2) / 2;
       const y = containerYTop + 25;
